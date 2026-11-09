@@ -1,0 +1,497 @@
+// Prisma Schema for ORGANICHY Food & Nutrition E-Commerce Platform
+// Moradabad, Uttar Pradesh, India - Founder: Sourav
+// Pure Natural Nutrition | Peanut Butter, Protein Bars, Clean Oats, Whey Protein
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  STAFF
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  COD
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+  FREE_SHIPPING
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// -------------------------------------------------------------
+// USER & AUTHENTICATION
+// -------------------------------------------------------------
+
+model User {
+  id           String         @id @default(cuid())
+  name         String
+  email        String         @unique
+  passwordHash String?
+  phone        String?
+  role         Role           @default(CUSTOMER)
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  addresses    Address[]
+  orders       Order[]
+  reviews      Review[]
+  cart         Cart?
+  notifications Notification[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Address {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  phoneNumber String
+  street      String
+  landmark    String?
+  city        String
+  state       String
+  postalCode  String
+  country     String   @default("India")
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// -------------------------------------------------------------
+// PRODUCT CATALOG & INVENTORY
+// -------------------------------------------------------------
+
+model Category {
+  id           String    @id @default(cuid())
+  name         String
+  slug         String    @unique
+  description  String?
+  imageUrl     String?
+  displayOrder Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  products     Product[]
+
+  @@index([slug])
+}
+
+model Product {
+  id               String          @id @default(cuid())
+  title            String
+  slug             String          @unique
+  shortDescription String?
+  description      String
+  benefits         String[]        @default([])
+  ingredients      String?
+  nutritionFacts   Json?           // e.g. { protein: "30g", energy: "620 kcal", carbs: "18g", fat: "48g" }
+  categoryId       String
+  category         Category        @relation(fields: [categoryId], references: [id])
+  isFeatured       Boolean         @default(false)
+  isBestSeller     Boolean         @default(false)
+  status           ProductStatus   @default(ACTIVE)
+  rating           Float           @default(5.0)
+  reviewCount      Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  variants         ProductVariant[]
+  images           ProductImage[]
+  reviews          Review[]
+  orderItems       OrderItem[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([status])
+}
+
+model ProductVariant {
+  id             String      @id @default(cuid())
+  productId      String
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name           String      // e.g. "1kg Crunchy", "500g Creamy", "1kg Dark Chocolate"
+  weight         String      // e.g. "1kg", "500g", "250g"
+  flavor         String      // e.g. "Classic Crunchy", "Creamy", "Dark Chocolate"
+  sku            String      @unique
+  price          Float       // Selling Price in INR (e.g. 499)
+  compareAtPrice Float?      // Strikethrough MRP in INR (e.g. 599)
+  stock          Int         @default(100) // Fast aggregate stock
+  isActive       Boolean     @default(true)
+  isDefault      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  inventory      Inventory?
+  orderItems     OrderItem[]
+  cartItems      CartItem[]
+  images         ProductImage[]
+
+  @@index([productId])
+  @@index([sku])
+}
+
+model ProductImage {
+  id           String          @id @default(cuid())
+  productId    String
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId    String?
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  url          String
+  publicId     String?         // Cloudinary public_id
+  altText      String?
+  displayOrder Int             @default(0)
+  isThumbnail  Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+
+  @@index([productId])
+}
+
+model Inventory {
+  id                String         @id @default(cuid())
+  variantId         String         @unique
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  stockQuantity     Int            @default(100)
+  reservedQuantity  Int            @default(0)
+  lowStockThreshold Int            @default(15)
+  batchNumber       String?        // e.g. "BATCH-ORG-2026-11A"
+  mfgDate           DateTime?
+  expiryDate        DateTime?
+  warehouseLocation String?        @default("Moradabad Central Facility, UP")
+  updatedAt         DateTime       @updatedAt
+
+  @@index([variantId])
+}
+
+// -------------------------------------------------------------
+// CART SYSTEM (GUEST & AUTHENTICATED)
+// -------------------------------------------------------------
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String?    @unique
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String?    @unique // Guest checkout session key
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     CartItem[]
+
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  cartId    String
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity  Int            @default(1)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+}
+
+// -------------------------------------------------------------
+// ORDERS & CHECKOUT
+// -------------------------------------------------------------
+
+model Order {
+  id                 String        @id @default(cuid())
+  orderNumber        String        @unique // e.g. "ORG-202611-1001"
+  userId             String?
+  user               User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestEmail         String?
+  guestPhone         String?
+  guestName          String?
+  
+  status             OrderStatus   @default(PENDING)
+  paymentMethod      PaymentMethod @default(RAZORPAY)
+  paymentStatus      PaymentStatus @default(PENDING)
+  
+  razorpayOrderId    String?
+  razorpayPaymentId  String?
+  razorpaySignature  String?
+
+  subtotal           Float
+  discountTotal      Float         @default(0)
+  shippingFee        Float         @default(0)
+  taxTotal           Float         @default(0)
+  grandTotal         Float
+  
+  couponId           String?
+  coupon             Coupon?       @relation(fields: [couponId], references: [id])
+  
+  shippingAddress    Json          // snapshot: { fullName, phone, street, landmark, city, state, postalCode, country }
+  billingAddress     Json?         // snapshot
+  customerNotes      String?
+  adminNotes         String?
+
+  items              OrderItem[]
+  payments           Payment[]
+  shipment           Shipment?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([orderNumber])
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id          String         @id @default(cuid())
+  orderId     String
+  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product        @relation(fields: [productId], references: [id])
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  title       String         // snapshot of product title
+  variantName String         // snapshot of variant name
+  sku         String         // snapshot of SKU
+  unitPrice   Float
+  quantity    Int
+  total       Float
+
+  @@index([orderId])
+}
+
+// -------------------------------------------------------------
+// PAYMENTS & SHIPMENTS
+// -------------------------------------------------------------
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method            PaymentMethod @default(RAZORPAY)
+  status            PaymentStatus @default(PENDING)
+  amount            Float
+  currency          String        @default("INR")
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  refundId          String?
+  failureReason     String?
+  rawMetadata       Json?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([razorpayOrderId])
+}
+
+model Shipment {
+  id                String    @id @default(cuid())
+  orderId           String    @unique
+  order             Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  trackingNumber    String?   @unique
+  courierPartner    String    @default("Delhivery") // Delhivery, Blue Dart, DTDC, India Post
+  status            String    @default("MANIFESTED") // MANIFESTED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RETURNED
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  estimatedDelivery DateTime?
+  trackingUrl       String?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([trackingNumber])
+}
+
+// -------------------------------------------------------------
+// DISCOUNTS, REVIEWS & NOTIFICATIONS
+// -------------------------------------------------------------
+
+model Coupon {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  description      String?
+  discountType     DiscountType @default(PERCENTAGE)
+  discountValue    Float        // e.g. 10 for 10% or 100 for Rs.100 off
+  minOrderValue    Float        @default(0)
+  maxDiscountValue Float?      // Cap on percentage discounts
+  startDate        DateTime     @default(now())
+  endDate          DateTime
+  usageLimit       Int?         // Total redemption limit
+  usageCount       Int          @default(0)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  orders           Order[]
+
+  @@index([code])
+}
+
+model Review {
+  id                 String   @id @default(cuid())
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId             String?
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName         String
+  authorEmail        String
+  rating             Int      @default(5)
+  title              String
+  comment            String
+  isVerifiedPurchase Boolean  @default(false)
+  isApproved         Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([productId])
+  @@index([isApproved])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, ORDER_UPDATE, PROMO, ALERT
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// -------------------------------------------------------------
+// MEDIA ASSETS & DYNAMIC CMS
+// -------------------------------------------------------------
+
+model MediaAsset {
+  id           String           @id @default(cuid())
+  title        String
+  publicId     String           @unique // Cloudinary public_id
+  secureUrl    String
+  width        Int?
+  height       Int?
+  format       String?
+  bytes        Int?
+  folder       String           @default("Homepage Hero")
+  altText      String?
+  tags         String[]         @default([])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  websiteSections WebsiteSection[]
+
+  @@index([folder])
+}
+
+model WebsiteSection {
+  id               String      @id @default(cuid())
+  sectionKey       String      @unique // e.g. "home_hero_banner", "home_promo_banner", "about_story", etc.
+  page             String      @default("home") // e.g. "home", "about", "story", "faq", "contact", "footer", "seo"
+  title            String?
+  subtitle         String?
+  content          String?     // Long body copy or paragraphs
+  badgeText        String?     // Badge callout e.g. "HANDCRAFTED IN MORADABAD"
+  ctaText          String?
+  ctaLink          String?
+  secondaryCtaText String?
+  secondaryCtaLink String?
+  mediaAssetId     String?
+  mediaAsset       MediaAsset? @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  fallbackUrl      String?     // Default fallback image if mediaAsset is unlinked
+  metadata         Json?       // Dynamic payload (FAQs, milestones, stats, products, etc.)
+  isActive         Boolean     @default(true)
+  displayOrder     Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([sectionKey])
+  @@index([page])
+}
+
+model WebsiteSettings {
+  id                    String   @id @default("default_settings")
+  storeName             String   @default("ORGANICHY")
+  tagline               String   @default("Pure Nutrition for Active Lifestyles")
+  founderName           String   @default("Sourav")
+  founderLocation       String   @default("Moradabad, Uttar Pradesh, India")
+  supportEmail          String   @default("care@organichy.com")
+  supportPhone          String   @default("+91 98765 43210")
+  whatsappNumber        String   @default("+91 98765 43210")
+  freeShippingThreshold Float    @default(499)
+  standardShippingFee   Float    @default(49)
+  codFee                Float    @default(40)
+  isCodEnabled          Boolean  @default(true)
+  announcementText      String   @default("🌱 FREE All-India Shipping on orders above ₹499 | 100% Pure & Freshly Roasted")
+  isAnnouncementActive  Boolean  @default(true)
+  promoCouponCode       String?  @default("ORGANICHY10")
+  socialLinks           Json?
+  seoDefaults           Json?
+  updatedAt             DateTime @updatedAt
+}
+
+// -------------------------------------------------------------
+// AUDIT LOGGING & SECURITY
+// -------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String   // e.g. "CREATE_PRODUCT", "UPDATE_ORDER_STATUS", "PRICE_OVERRIDE", "IMAGE_UPLOAD"
+  entityType String   // e.g. "Product", "Order", "Inventory", "MediaAsset", "User"
+  entityId   String?
+  ipAddress  String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+}

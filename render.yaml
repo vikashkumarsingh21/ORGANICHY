@@ -1,0 +1,82 @@
+# ==============================================================================
+# ORGANICHY E-COMMERCE PLATFORM - RENDER BLUEPRINT CONFIGURATION
+# ==============================================================================
+# This blueprint defines the production Web Service deployment on Render.
+# Neon PostgreSQL provides the serverless database layer.
+# ==============================================================================
+
+services:
+  - type: web
+    name: organichy-ecommerce
+    runtime: node
+    plan: starter
+    region: oregon
+    autoDeploy: true
+
+    # Build pipeline: install dependencies, run Prisma migrations, build Next.js
+    buildCommand: npm install && npx prisma migrate deploy && npm run build
+
+    # Production web server runner
+    startCommand: npm start
+
+    # Health check path verified by Render orchestrator
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Application & Domain URLs
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false # Set in Render Dashboard (e.g., https://organichy.onrender.com or custom domain)
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+
+      # Brand & Security Controls
+      - key: NEXT_PUBLIC_STORE_NAME
+        value: "ORGANICHY Pure Nutrition"
+      - key: NEXT_PUBLIC_ENABLE_DEMO_CREDENTIALS
+        value: "false"
+
+      # Neon PostgreSQL Database Connection
+      - key: DATABASE_URL
+        sync: false # Neon pooled connection string with ?sslmode=require
+
+      # Auth & Crypto Secrets
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+
+      # Admin Identity & Password
+      - key: ADMIN_NAME
+        value: "Sourav - ORGANICHY Admin"
+      - key: ADMIN_EMAIL
+        value: admin@organichy.com
+      - key: ADMIN_PASSWORD
+        sync: false # Set securely in Render Dashboard
+
+      # Cloudinary CDN & Asset Storage
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+        sync: false
+
+      # Razorpay Payment Gateway
+      - key: NEXT_PUBLIC_RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      # Shipping Provider (MANUAL, SHIPROCKET, or DELHIVERY)
+      - key: SHIPPING_PROVIDER
+        value: MANUAL
+

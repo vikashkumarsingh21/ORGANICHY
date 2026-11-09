@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 43 27% 95%; /* Soft warm organic linen cream #F7F4EC */
+    --foreground: 147 16% 12%; /* #1A221C Charcoal */
+    --primary: 112 40% 22%; /* #294C23 Natural Green */
+    --primary-light: 153 45% 45%; /* #3D9C77 Mint Green */
+  }
+
+  body {
+    @apply bg-brand-cream-50 text-brand-charcoal-900 antialiased selection:bg-brand-mint-200 selection:text-brand-green-900;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight text-brand-charcoal-900;
+  }
+}
+
+/* Custom subtle scrollbar with warm organic tone */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #ede6d6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bfb297;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5eb694;
+}
+
+/* Premium animation transitions */
+.transition-smooth {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
